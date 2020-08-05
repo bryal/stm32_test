@@ -1,0 +1,33 @@
+[package]
+name = "stm32_test"
+version = "0.1.0"
+authors = ["Johan Johansson <jo@jo.zone>"]
+edition = "2018"
+
+[dependencies]
+# Gives us access to the STM32F1 registers
+stm32f1 = {version = "0.11.0", features = ["stm32f103", "rt",]}
+# provides startup code for the ARM CPU
+cortex-m-rt = "0.6.12"
+# provides access to low level ARM CPU registers (used for delay)
+cortex-m = "0.6.3"
+# provies a panic-handler (halting cpu)
+# (required when not using stdlib)
+panic-halt = "0.2.0"
+
+embedded-hal = "0.2.4"
+stm32f1xx-hal = { version = "0.6.1", features = ["stm32f103", "rt", "stm32-usbd" ] }
+usb-device = "0.2.5"
+usbd-serial = "0.1"
+
+[profile.dev]
+# optimize for size ('z' would optimize even more)
+opt-level = 's'
+# link with link time optimization (lto).
+lto = true
+
+[profile.release]
+opt-level = 's'
+lto = true
+# enable debugging in release mode.
+debug = true

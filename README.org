@@ -1,0 +1,4 @@
+Check out [[https://jo.zone/bluepill.html]],
+https://jonathanklimt.de/electrics/programming/rust-STM32F103-blink/,
+and
+https://jonathanklimt.de/electronics/programming/embedded-rust/rust-on-stm32-2/.
