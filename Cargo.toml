@@ -20,6 +20,9 @@ stm32f1xx-hal = { version = "0.6.1", features = ["stm32f103", "rt", "stm32-usbd"
 usb-device = "0.2.5"
 usbd-serial = "0.1"
 
+embedded-graphics = "0.6.2"
+ssd1306 = "0.4.0"
+
 [profile.dev]
 # optimize for size ('z' would optimize even more)
 opt-level = 's'

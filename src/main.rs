@@ -1,25 +1,47 @@
+//! Read text from USB serial, print text to I2C connected SSD1306 display & echo back
+//! over serial in uppercase.
+//!
+//! ```
+//!      Display -> Blue Pill
+//!          GND -> GND
+//! +3.3V or +5V -> VCC
+//!          SDA -> PB9
+//!          SCL -> PB8
+//! ```
+
 // std and main are not available for bare metal software
 #![no_std]
 #![no_main]
 
 extern crate panic_halt;
 
+use core::fmt::Write;
 use cortex_m::asm::delay;
 use cortex_m_rt::entry;
 use embedded_hal::digital::v2::OutputPin;
-use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::usb::{Peripheral, UsbBus};
+use ssd1306::{prelude::*, Builder, I2CDIBuilder};
+use stm32f1xx_hal::{
+    i2c::{BlockingI2c, DutyCycle, Mode},
+    pac,
+    prelude::*,
+    usb::{Peripheral, UsbBus},
+};
 use usb_device::prelude::*;
 use usbd_serial::{SerialPort, USB_CLASS_CDC};
 
 // CDC-ACM serial port example using polling in a busy loop.
 #[entry]
 fn main() -> ! {
-    let dp = stm32f1xx_hal::pac::Peripherals::take().unwrap();
+    // Get access to the device specific peripherals from the peripheral access crate
+    let dp = pac::Peripherals::take().unwrap();
 
+    // Take ownership over the raw flash and rcc devices and convert them into the
+    // corresponding HAL structs
     let mut flash = dp.FLASH.constrain();
     let mut rcc = dp.RCC.constrain();
 
+    // Freeze the configuration of all the clocks in the system and store the frozen
+    // frequencies in `clocks`
     let clocks = rcc
         .cfgr
         .use_hse(8.mhz())
@@ -27,7 +49,9 @@ fn main() -> ! {
         .pclk1(24.mhz())
         .freeze(&mut flash.acr);
 
-    assert!(clocks.usbclk_valid());
+    // ============================================
+    // USB serial
+    // ============================================
 
     // Configure the on-board LED (PC13, green)
     let mut gpioc = dp.GPIOC.split(&mut rcc.apb2);
@@ -60,6 +84,53 @@ fn main() -> ! {
         .device_class(USB_CLASS_CDC)
         .build();
 
+    // ============================================
+    // Display
+    // ============================================
+
+    // Prepare the alternate function I/O registers
+    let mut afio = dp.AFIO.constrain(&mut rcc.apb2);
+
+    let mut gpiob = dp.GPIOB.split(&mut rcc.apb2);
+
+    let scl = gpiob.pb8.into_alternate_open_drain(&mut gpiob.crh);
+    let sda = gpiob.pb9.into_alternate_open_drain(&mut gpiob.crh);
+
+    let i2c = BlockingI2c::i2c1(
+        dp.I2C1,
+        (scl, sda),
+        &mut afio.mapr,
+        Mode::Fast {
+            frequency: 400_000.hz(),
+            duty_cycle: DutyCycle::Ratio2to1,
+        },
+        clocks,
+        &mut rcc.apb1,
+        1000,
+        10,
+        1000,
+        1000,
+    );
+
+    let interface = I2CDIBuilder::new().init(i2c);
+    let mut disp: TerminalMode<_> = Builder::new().connect(interface).into();
+    disp.init().unwrap();
+    disp.clear().ok();
+
+    // One glyph is 8x8 px
+    // So a resolution of 128x64 px => 16x8 glyphs
+
+    // loop {
+    //     for c in 97..123 {
+    //         let _ = disp.write_str(unsafe { core::str::from_utf8_unchecked(&[c]) });
+    //         delay(100_000);
+    //     }
+    //     for c in 65..91 {
+    //         let _ = disp.write_str(unsafe { core::str::from_utf8_unchecked(&[c]) });
+    //         delay(100_000);
+    //     }
+    // }
+
     loop {
         if !usb_dev.poll(&mut [&mut serial]) {
             continue;
@@ -70,6 +141,10 @@ fn main() -> ! {
         match serial.read(&mut buf) {
             Ok(count) if count > 0 => {
                 led.set_low().unwrap(); // Turn on
+
+                // Print to display
+                disp.write_str(unsafe { core::str::from_utf8_unchecked(&buf[0..count]) })
+                    .ok();
 
                 // Echo back in upper case
                 for c in buf[0..count].iter_mut() {
@@ -94,33 +169,3 @@ fn main() -> ! {
         led.set_high().unwrap(); // Turn off
     }
 }
-
-// // Blink
-// //
-// // use `main` as the entry point of this application
-// #[entry]
-// fn main() -> ! {
-//     // get handles to the hardware
-//     let peripherals = stm32f103::Peripherals::take().unwrap();
-//     let gpioc = &peripherals.GPIOC;
-//     let rcc = &peripherals.RCC;
-
-//     // enable the GPIO clock for IO port C
-//     rcc.apb2enr.write(|w| w.iopcen().set_bit());
-//     gpioc.crh.write(|w| {
-//         w.mode13().bits(0b11);
-//         w.cnf13().bits(0b00)
-//     });
-//     for _ in 0..5 {
-//         gpioc.bsrr.write(|w| w.bs13().set_bit());
-//         cortex_m::asm::delay(2000000);
-//         gpioc.brr.write(|w| w.br13().set_bit());
-//         cortex_m::asm::delay(2000000);
-//     }
-//     loop {
-//         gpioc.bsrr.write(|w| w.bs13().set_bit());
-//         cortex_m::asm::delay(10_000_000);
-//         gpioc.brr.write(|w| w.br13().set_bit());
-//         cortex_m::asm::delay(10_000_000);
-//     }
-// }
